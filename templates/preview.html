@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSV Preview</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@11.0.1/dist/handsontable.full.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/handsontable@11.0.1/dist/handsontable.full.min.js"></script>
+</head>
+<body class="container py-5">
+    <div class="card shadow p-4">
+        <h1 class="text-center mb-4">CSV Preview</h1>
+        <!-- Search Box -->
+        <input type="text" id="searchField" class="form-control mb-3" placeholder="Search in table...">
+        <div id="csvTable"></div>
+    </div>
+    <a href="/" class="btn btn-secondary mt-3">Back</a>
+
+    <script>
+        var data = {{ table_data|tojson }};  // Convert Python list to JavaScript array
+
+        var container = document.getElementById('csvTable');
+        var hot = Handsontable(container, {
+            data: data,
+            rowHeaders: true,
+            colHeaders: true,
+            manualColumnResize: true,  // Allow resizing columns
+            columnSorting: true,       // Enable sorting
+            stretchH: 'all',
+            dropdownMenu: ['filter_by_value', 'filter_action_bar'], // Enables filtering
+            filters: true,      // Enables column filtering
+            search: true,        // Enable search functionality
+            licenseKey: 'non-commercial-and-evaluation',
+        });
+
+        // Search functionality
+        var searchField = document.getElementById('searchField');
+        searchField.addEventListener('keyup', function () {
+            var search = hot.getPlugin('search');
+            var queryResult = search.query(this.value);
+            hot.render(); // Refresh the table after search
+        });
+
+    </script>
+</body>
+</html>
