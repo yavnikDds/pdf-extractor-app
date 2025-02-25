@@ -1,6 +1,8 @@
 # from flask_sqlalchemy import SQLAlchemy
-# from app import app
-from . import db
+from flask_sqlalchemy import SQLAlchemy
+# from app import db
+# from . import db
+db = SQLAlchemy()  # Initialize without app
 
 
 # db = SQLAlchemy()  # Initialize without app; bind it later in app.py
