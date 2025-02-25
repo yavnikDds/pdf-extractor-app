@@ -4,49 +4,30 @@
     <title>CSV Preview</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@11.0.1/dist/handsontable.full.min.css">
     <script src="https://cdn.jsdelivr.net/npm/handsontable@11.0.1/dist/handsontable.full.min.js"></script>
-    <style>
-        .container { max-width: 1200px; margin: auto; }
-        .btn { padding: 10px 20px; margin: 5px; text-decoration: none; color: white; background-color: #007bff; border-radius: 5px; }
-        .btn-secondary { background-color: #6c757d; }
-        .error { color: red; }
-    </style>
 </head>
 <body class="container py-5">
     <div class="card shadow p-4">
-        <h1 class="text-center mb-4">CSV Preview and Edit</h1>
-        {% if error %}
-            <p class="error">{{ error }}</p>
-        {% endif %}
+        <h1 class="text-center mb-4">CSV Preview</h1>
         <!-- Search Box -->
         <input type="text" id="searchField" class="form-control mb-3" placeholder="Search in table...">
-        <!-- Table Type Selector -->
-        <label for="tableType">Select Table:</label>
-        <select id="tableType" class="form-control mb-3">
-            <option value="financial_reports">Financial Reports</option>
-            <option value="hotel_performance">Hotel Performance</option>
-            <option value="quality_evaluations">Quality Evaluations</option>
-        </select>
         <div id="csvTable"></div>
-        <button id="saveBtn" class="btn">Save to Database</button>
-        <a href="{{ url_for('download_csv', filename=filename) }}" class="btn">Download CSV</a>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">Back</a>
     </div>
+    <a href="/" class="btn btn-secondary mt-3">Back</a>
 
     <script>
-        var data = {{ table_data|tojson|safe }};  // Convert Python list to JavaScript array
+        var data = {{ table_data|tojson }};  // Convert Python list to JavaScript array
 
         var container = document.getElementById('csvTable');
-        var hot = new Handsontable(container, {
+        var hot = Handsontable(container, {
             data: data,
             rowHeaders: true,
             colHeaders: true,
-            manualColumnResize: true,
-            columnSorting: true,
+            manualColumnResize: true,  // Allow resizing columns
+            columnSorting: true,       // Enable sorting
             stretchH: 'all',
-            dropdownMenu: ['filter_by_value', 'filter_action_bar'],
-            filters: true,
-            search: true,
-            contextMenu: true,  // Adds right-click options like copy/paste
+            dropdownMenu: ['filter_by_value', 'filter_action_bar'], // Enables filtering
+            filters: true,      // Enables column filtering
+            search: true,        // Enable search functionality
             licenseKey: 'non-commercial-and-evaluation',
         });
 
@@ -55,34 +36,9 @@
         searchField.addEventListener('keyup', function () {
             var search = hot.getPlugin('search');
             var queryResult = search.query(this.value);
-            hot.render();
+            hot.render(); // Refresh the table after search
         });
 
-        // Save button functionality
-        document.getElementById('saveBtn').addEventListener('click', function () {
-            var editedData = hot.getData();  // Get the current table data
-            var tableType = document.getElementById('tableType').value;
-
-            fetch("{{ url_for('preview_csv', filename=filename) }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    data: editedData,
-                    table_type: tableType
-                })
-            })
-            .then(response => response.text())
-            .then(html => {
-                if (html.includes("Data saved to database")) {
-                    window.location.href = "{{ url_for('index') }}";
-                } else {
-                    document.body.innerHTML = html;  // Show error if any
-                }
-            })
-            .catch(error => console.error('Error:', error));
-        });
     </script>
 </body>
 </html>
