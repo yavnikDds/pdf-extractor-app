@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, session
+from flask import Flask, render_template, request, send_file, session, jsonify
 from datetime import datetime
 from sqlalchemy import text  # Import text for raw SQL queries
 from flask_sqlalchemy import SQLAlchemy
@@ -70,7 +70,7 @@ def index():
             pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(pdf_path)
             try:
-                dfs = tabula.read_pdf(pdf_path, pages='all', stream=True, guess=True)
+                dfs = tabula.read_pdf(pdf_path, pages='all', stream=True)
                 if dfs:
                     csv_filename = filename.rsplit('.', 1)[0] + ".csv"
                     csv_path = os.path.join(app.config['CSV_FOLDER'], csv_filename)
@@ -156,5 +156,75 @@ def test_db():
     except Exception as e:
         return str(e)
 
+# Replace the existing save_edited_csv function
+@app.route('/save_edited_csv', methods=['POST'])
+def save_edited_csv():
+    try:
+        data = request.get_json()
+        filename = data['filename']
+        headers = data['headers']
+        edited_data = data['data']
+
+        # Create a new filename with a timestamp to avoid overwriting
+        base_name = filename.rsplit('.', 1)[0]
+        new_filename = f"{base_name}_edited_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        csv_path = os.path.join(app.config['CSV_FOLDER'], new_filename)
+
+        # Write headers and data to the new CSV
+        with open(csv_path, 'w', newline='', encoding='utf-8', errors='replace') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)  # Write headers first
+            for row in edited_data:
+                writer.writerow(row)  # Write each data row
+
+        return jsonify({"message": "Data saved successfully", "filename": new_filename}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Add this new endpoint below your existing routes
+@app.route('/insert_to_database', methods=['POST'])
+def insert_to_database():
+    try:
+        data = request.get_json()
+        headers = data['headers']
+        edited_data = data['data']
+
+        # Split data into tables based on blank rows
+        tables = []
+        current_table = []
+        for row in edited_data:
+            is_blank = all(cell in ('', None) for cell in row)
+            if is_blank and current_table:
+                tables.append(current_table)
+                current_table = []
+            elif not is_blank:
+                current_table.append(row)
+        if current_table:
+            tables.append(current_table)
+
+        if not tables:
+            return jsonify({"error": "No valid tables found in the data"}), 400
+
+        # Process the first table
+        table_data = tables[0]  # Data rows only (headers are separate)
+
+        # Expected FinancialReport columns
+        expected_headers = {'report_date', 'revenue', 'expenses', 'occupancy_rate'}
+        filtered_headers = [h for h in headers if h]  # Ignore blank headers
+        if not all(h in expected_headers for h in filtered_headers):
+            missing = expected_headers - set(filtered_headers)
+            return jsonify({"error": f"Headers must match FinancialReport fields. Missing: {missing}"}), 400
+
+        # Prepare data for save_to_database
+        formatted_data = [headers] + table_data
+        result = save_to_database(formatted_data, "financial_reports")
+        if result == "success":
+            return jsonify({"message": "Data inserted successfully"}), 200
+        else:
+            return jsonify({"error": result}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+        
 if __name__ == '__main__':
     app.run(debug=True)
