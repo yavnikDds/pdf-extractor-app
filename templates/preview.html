@@ -21,15 +21,20 @@
     </div>
 
     <script>
+        var FIELD_OPTIONS = {{ FIELD_OPTIONS|tojson|safe }};
+    </script>
+
+    <script>
         var data = {{ table_data|tojson }};
-        var filename = "{{ filename }}"; // Pass filename from Flask
+        var filename = "{{ filename|safe }}";
+        console.log("Pass filename from Flask");
+        console.log(filename);
+    
         var container = document.getElementById('csvTable');
         var hot = Handsontable(container, {
-            data: data,
+            data: data.slice(1),  // Start from second row (periods onward)
             rowHeaders: true,
-            colHeaders: function(col) {
-                return String.fromCharCode(65 + col);
-            },
+            colHeaders: data[0],  // Use first row (A,B,C,D) as column headers
             manualColumnResize: true,
             manualRowResize: true,
             stretchH: 'all',
@@ -49,32 +54,16 @@
             autoWrapRow: true,
             autoWrapCol: true
         });
-
-        // Make headers editable
-        hot.updateSettings({
-            beforeChange: function(changes, source) {
-                if (changes) {
-                    changes.forEach(([row, col, oldValue, newValue]) => {
-                        if (row === -1) {
-                            let headers = hot.getColHeader();
-                            headers[col] = newValue;
-                            hot.updateSettings({ colHeaders: headers });
-                            return false;
-                        }
-                    });
-                }
-            }
-        });
-
-        // Search functionality
+    
+        // Search functionality (unchanged)
         var searchField = document.getElementById('searchField');
         searchField.addEventListener('keyup', function () {
             var search = hot.getPlugin('search');
             var queryResult = search.query(this.value);
             hot.render();
         });
-
-        // Save Changes
+    
+        // Save Changes (unchanged)
         document.getElementById('saveChanges').addEventListener('click', function() {
             var editedData = hot.getData();
             var headers = hot.getColHeader();
@@ -83,7 +72,6 @@
                 headers: headers,
                 data: editedData
             };
-
             $.ajax({
                 url: '/save_edited_csv',
                 type: 'POST',
@@ -105,11 +93,11 @@
                 }
             });
         });
-
+    
+            // <!-- Replace the showFieldMapping function and related script in the <script> section -->
         document.getElementById('insertToDb').addEventListener('click', function() {
-            var fullData = hot.getData();
-            var headers = fullData[0];  // Take first row as headers
-            var editedData = fullData.slice(1);  // Rest is data
+            var editedData = hot.getData();
+            var headers = hot.getColHeader();
             var payload = {
                 filename: filename,
                 headers: headers,
@@ -125,8 +113,11 @@
                     var feedback = document.getElementById('saveFeedback');
                     feedback.style.display = 'block';
                     feedback.className = 'text-success';
-                    feedback.innerText = 'Data inserted successfully!';
+                    feedback.innerText = 'Data parsed successfully!';
                     setTimeout(() => feedback.style.display = 'none', 3000);
+
+                    // Show field mapping UI on the same page
+                    showFieldMapping(response.row_headers, response.periods, response.filename);
                 },
                 error: function(xhr, status, error) {
                     var feedback = document.getElementById('saveFeedback');
@@ -137,6 +128,95 @@
                 }
             });
         });
+
+        // Function to show field mapping UI
+        function showFieldMapping(row_headers, periods, filename) {
+            var mappingSection = document.getElementById('fieldMappingSection');
+            if (!mappingSection) {
+                // Create the mapping section if it doesn’t exist
+                mappingSection = document.createElement('div');
+                mappingSection.id = 'fieldMappingSection';
+                mappingSection.className = 'card shadow p-4 mt-4';
+                mappingSection.innerHTML = `
+                    <h2 class="text-center mb-3">Map CSV Fields to Database Fields</h2>
+                    <p>Select fields from your CSV file to map against database fields, or ignore during import.</p>
+                    <table class="table" id="mappingTable">
+                        <thead>
+                            <tr>
+                                <th>CSV Column Name</th>
+                                <th>Map to Field</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mappingBody"></tbody>
+                    </table>
+                    <div class="text-center mt-3">
+                        <button id="saveMapping" class="btn btn-primary me-2">Save Mapping and Import</button>
+                        <button id="cancelMapping" class="btn btn-secondary">Cancel</button>
+                    </div>
+                `;
+                document.querySelector('.card.shadow.p-4').appendChild(mappingSection);
+            }
+
+            // Populate the mapping table
+            var mappingBody = document.getElementById('mappingBody');
+            mappingBody.innerHTML = '';
+            row_headers.forEach(header => {
+                var row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${header}</td>
+                    <td>
+                        <select name="mapping[${header.replace('"', '\\"').replace("'", "\\'")}]" class="form-select">
+                            <option value="">-- Ignore --</option>
+                            ${Object.entries(FIELD_OPTIONS).map(([db_field, csv_name]) => `
+                                <option value="${db_field}" ${csv_name === header ? 'selected' : ''}>${db_field}</option>
+                            `).join('')}
+                        </select>
+                    </td>
+                `;
+                mappingBody.appendChild(row);
+            });
+
+            // Handle save mapping
+            document.getElementById('saveMapping').addEventListener('click', function() {
+                var mappings = {};
+                document.querySelectorAll('#mappingTable select').forEach(select => {
+                    var header = select.name.match(/mapping\[(.*?)\]/)[1];
+                    mappings[header] = select.value;
+                });
+
+                $.ajax({
+                    url: '/process_mapping',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        filename: filename,
+                        mappings: mappings
+                    }),
+                    success: function(response) {
+                        var feedback = document.getElementById('saveFeedback');
+                        feedback.style.display = 'block';
+                        feedback.className = 'text-success';
+                        feedback.innerText = 'Data imported successfully!';
+                        setTimeout(() => {
+                            feedback.style.display = 'none';
+                            document.getElementById('fieldMappingSection').style.display = 'none'; // Hide mapping UI
+                        }, 3000);
+                    },
+                    error: function(xhr, status, error) {
+                        var feedback = document.getElementById('saveFeedback');
+                        feedback.style.display = 'block';
+                        feedback.className = 'text-danger';
+                        feedback.innerText = 'Error importing data: ' + xhr.responseText;
+                        setTimeout(() => feedback.style.display = 'none', 3000);
+                    }
+                });
+            });
+
+            // Handle cancel
+            document.getElementById('cancelMapping').addEventListener('click', function() {
+                document.getElementById('fieldMappingSection').style.display = 'none';
+            });
+        }
     </script>
 </body>
 </html>
